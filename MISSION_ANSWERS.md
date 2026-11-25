@@ -362,6 +362,34 @@ Chạy `python check_production_ready.py` (bản đầy đủ, có Docker) trong
 
 Số đo trong lần chạy: image 238 MB; `docker stop` thoát với exit code 0 sau 0,7 giây; rate limit trả 429 sau 5 request thành công (`RATE_LIMIT_PER_MINUTE=5`) và vẫn 429 sau khi restart agent.
 
+## Part 7: Benchmark & Observability
+
+Kết quả đo nằm trong `BENCHMARK_REPORT.md`.
+
+### Exercise 7.1: Metrics của agent
+
+1. Ví dụ trong `GET /metrics` của v2:
+   - **Counter** (chỉ tăng): `llm_requests_total{model="mock-llm-small",status="ok"} 1.0`
+   - **Gauge** (lên xuống): `agent_in_flight_requests 0.0`
+   - **Histogram** (chia bucket): `llm_request_duration_seconds_bucket{le="2.0",...} 1.0`. Request đầu mất 1676,9 ms nên các bucket tới `le="1.5"` bằng 0, từ `le="2.0"` trở lên bằng 1.
+2. Nếu label `route` dùng URL thật, mỗi URL lạ (`/wp-admin`, `/.env`...) tạo thêm time series mới (với histogram là cả loạt bucket). Bot quét hàng nghìn URL làm cardinality bùng nổ, Prometheus tốn RAM. Dùng `route.path` và gán `unmatched` thì mọi URL lạ gộp vào một nhóm.
+3. Metric thêm vào `develop/app.py`: Histogram `agent_question_length_chars`. Dùng Histogram vì độ dài có rất nhiều giá trị; làm label thì cardinality tăng mạnh.
+
+### Exercise 7.2 và 7.3
+
+Xem mục 1–3 của `BENCHMARK_REPORT.md`.
+
+### Exercise 7.4: Grafana
+
+1. Trên dashboard p95 là 292,5 ms, avg nằm thấp hơn một chút, p99 khoảng 1,8 giây. p95 và avg gần nhau vì chỉ khoảng 3% request chậm, chưa chạm 5%; nhóm này hiện rõ ở p99.
+2. Có, Nginx chia gần đều: 8,6 và 8,2 request/giây cho hai instance (Prometheus).
+3. Input khoảng 1243 token/giây, output khoảng 661. Input lớn hơn vì prompt gồm system prompt, tài liệu retrieval và câu hỏi; output chỉ là câu trả lời.
+4. `curl http://localhost:8080/metrics` trả 404 vì Nginx chặn `/metrics` từ bên ngoài, tránh lộ thông tin nội bộ. Prometheus đọc thẳng từ agent qua mạng nội bộ.
+
+### Exercise 7.5 đến 7.7
+
+Xem mục 4–6 của `BENCHMARK_REPORT.md`. Để stack chạy được tôi thêm `ENV PYTHONUSERBASE=/home/agent/.local` vào `production/Dockerfile` (thiếu dòng này agent báo `No module named 'uvicorn'`).
+
 ## AI log
 
 Công cụ: Claude (Claude Code).
@@ -370,7 +398,16 @@ Công cụ: Claude (Claude Code).
 |------|--------|---------|
 | Toàn lab | Tóm tắt lab và hướng dẫn từng bước | Trang hướng dẫn CP0–CP8, kèm code tham khảo Part 6 |
 | Part 1, 2, 4, 5 | Viết bài trả lời từ output lệnh tôi đã chạy | Bản nháp các mục Part 1, 2, 4, 5 |
-| Part 6 | Điền code CP5 | Code cho các file bản khung trong `06-lab-complete/` (trừ `render.yaml` giữ nguyên), gồm cả `check_budget` |
-| Part 3 | Hoàn thiện báo cáo | Bản nháp so sánh `railway.toml` với `render.yaml` và mô tả Cloud Run |
+| Part 6 | Điền code CP5 | Code cho các file bản khung trong `06-lab-complete/`, gồm cả `check_budget` và `render.yaml` |
+| Part 3 | Hoàn thiện báo cáo, hướng dẫn deploy | Bản nháp so sánh `railway.toml` với `render.yaml`, mô tả Cloud Run, `DEPLOYMENT.md`, các bước deploy Render |
+| Part 7 | Hướng dẫn chạy và viết báo cáo từ số tôi đo | Metric `agent_question_length_chars`, 2 tài liệu thêm vào `KNOWLEDGE_BASE`, sửa `production/Dockerfile`, lệnh đo alert, bản nháp `BENCHMARK_REPORT.md` |
 
-Tôi tự sửa và tự kiểm tra: (tự viết 3–5 dòng)
+| Part 7 (phân tích) | Kiểm tra kết quả tôi gửi | Claude phát hiện hai lượt đo scale đầu đều chạy 2 instance, trace 4,4 giây không khớp log, agent crash do thiếu `PYTHONUSERBASE`; truy vấn thêm Prometheus, Jaeger, log Nginx; chạy `promtool test rules` |
+
+**Tôi đã chạy và kiểm tra:**
+
+- Tự chạy trên máy (WSL2) và gửi output cho Claude: curl ở Part 1, 2, 4, 5 (200/401/403/429), build và đo image, stack 3 instance, `test_stateless.py`, `check_production_ready.py` (PASS 12/12).
+- Tự tạo Blueprint trên Render, đặt key và chạy 4 lệnh tự kiểm (200/200/401/200).
+- Tự chạy load test, eval, Locust và năm thí nghiệm alert; chụp các ảnh trong `screenshots/`. Các lệnh đo do Claude soạn.
+- Đã chạy lại khi phát hiện sai: hai file `load_v2_slow_*` bị ghi đè, và hai lượt đo scale sai số instance.
+- Chưa kiểm chứng: nguyên nhân quá tải ở concurrency 100 (chưa đo CPU), nguyên nhân đồng hồ nhảy, job CI (chưa chạy trên GitHub), request dài hơn 30 giây khi tắt êm, tắt hẳn một instance giữa chừng ở Part 5.
