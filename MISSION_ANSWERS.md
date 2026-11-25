@@ -148,8 +148,12 @@ Sau khi test, dọn stack: `docker compose -p k5-day14-docker down` (đã gỡ 4
 
 ### Exercise 3.1: Deploy agent Part 6
 
-- URL: (điền sau khi deploy ở CP6)
-- Ảnh: (điền sau khi deploy ở CP6)
+Railway giới hạn workspace của tôi sau khi tạo project (lỗi "We limited this workspace after detecting unusual activity", chỉ gỡ khi nâng cấp gói trả phí), nên tôi deploy bằng **Render** như đề cho phép (Exercise 3.2).
+
+- URL: https://day14-agent-cjvz.onrender.com
+- Cấu hình: `06-lab-complete/render.yaml` (web service Docker và Redis).
+- Kết quả 4 lệnh tự kiểm: `/health` 200, `/ready` 200, `/ask` không key 401, `/ask` có key 200.
+- Chi tiết và ảnh: xem `DEPLOYMENT.md`.
 
 ### Exercise 3.2: So sánh `railway.toml` và `render.yaml`
 
